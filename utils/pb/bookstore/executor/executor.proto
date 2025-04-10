@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package bookstore.executor;
+
+message Order {
+  string orderId = 1;
+  string jsonData = 2;
+}
+
+message ExecutionResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+service ExecutorService {
+  rpc ExecuteOrder(Order) returns (ExecutionResponse);
+}

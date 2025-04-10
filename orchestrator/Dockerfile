@@ -7,9 +7,10 @@ WORKDIR /app
 
 # Copy the requirements file to the working directory
 COPY ./orchestrator/requirements.txt .
-
+ENV PYTHONPATH=/app/utils/pb
 # Install the Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
-
+RUN pip install --no-cache-dir "grpcio>=1.71.0" "grpcio-tools>=1.71.0"
+RUN pip install --upgrade protobuf
 # Set the command to run the container
 CMD python utils/other/hotreload.py "orchestrator/src/app.py"

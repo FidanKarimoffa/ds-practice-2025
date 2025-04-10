@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package bookstore.suggestions;
+
+// minimal Book item
+message BookItem {
+  string name = 1;
+  int32 quantity = 2;
+}
+
+// Full order data to store
+message OrderData {
+  repeated BookItem items = 1;
+  // add other fields if you want
+}
+
+// For caching
+message CacheOrderRequest {
+  string orderId = 1;
+  repeated int32 vectorClock = 2;
+  OrderData orderData = 3;
+}
+
+message CacheOrderResponse {
+  repeated int32 updatedVectorClock = 1;
+}
+
+// For partial event (f)
+message GenerateSuggestionsRequest {
+  string orderId = 1;
+  repeated int32 vectorClock = 2;
+}
+
+// The suggestions response
+message BookEntry {
+  string book_title = 1;
+  string book_author = 2;
+}
+
+message SuggestionsResponse {
+  repeated BookEntry suggestions = 1;
+  repeated int32 updatedVectorClock = 2;
+}
+
+// Single-shot request for older approach
+message BookRequest {
+  string book_name = 1;
+}
+
+service SuggestionsService {
+  rpc CacheOrder(CacheOrderRequest) returns (CacheOrderResponse);
+
+  // (f) generate suggestions
+  rpc GenerateSuggestions(GenerateSuggestionsRequest) returns (SuggestionsResponse);
+
+  // old single-shot
+  rpc SuggestBooks(BookRequest) returns (SuggestionsResponse);
+}

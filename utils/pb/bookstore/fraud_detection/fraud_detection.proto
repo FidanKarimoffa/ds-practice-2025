@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package bookstore.fraud_detection;
+
+// -------- MESSAGES --------
+
+// Basic user
+message User {
+  string name = 1;
+  string contact = 2;
+  string cardHolderName = 3;
+}
+
+message CreditCard {
+  string number = 1;
+  string expirationDate = 2;
+  string cvv = 3;
+}
+
+message OrderItem {
+  string name = 1;
+  int32 quantity = 2;
+}
+
+message Address {
+  string street = 1;
+  string city = 2;
+  string country = 3;
+}
+
+// Holds full order data
+message OrderData {
+  User user = 1;
+  CreditCard creditCard = 2;
+  repeated OrderItem items = 3;
+  Address billingAddress = 4;
+  Address shippingAddress = 5;
+  bool termsAccepted = 6;
+  bool giftWrapping = 7;
+  string shippingMethod = 8;
+  string userComment = 9;
+}
+
+// For caching
+message CacheOrderRequest {
+  string orderId = 1;
+  repeated int32 vectorClock = 2;
+  OrderData orderData = 3;
+}
+
+message CacheOrderResponse {
+  repeated int32 updatedVectorClock = 1;
+}
+
+// For partial events (d), (e)
+message EventRequest {
+  string orderId = 1;
+  repeated int32 vectorClock = 2;
+}
+
+// The partial checks response
+message FraudDetectionResponse {
+  bool isFraudulent = 1;
+  string reason = 2;
+  repeated int32 vectorClock = 3;
+}
+
+// Single-shot legacy
+message OrderInfo {
+  User user = 1;
+  CreditCard creditCard = 2;
+  repeated OrderItem items = 3;
+  Address billingAddress = 4;
+  Address shippingAddress = 5;
+  bool termsAccepted = 6;
+  bool giftWrapping = 7;
+  string shippingMethod = 8;
+  string userComment = 9;
+}
+
+// -------- SERVICE --------
+
+service FraudDetectionService {
+  rpc CacheOrder(CacheOrderRequest) returns (CacheOrderResponse);
+
+  // (d) user data check
+  rpc CheckUserDataFraud(EventRequest) returns (FraudDetectionResponse);
+
+  // (e) advanced cc fraud check
+  rpc CheckCreditCardFraud(EventRequest) returns (FraudDetectionResponse);
+
+  // single-shot older approach
+  rpc DetectUserFraud(OrderInfo) returns (FraudDetectionResponse);
+}

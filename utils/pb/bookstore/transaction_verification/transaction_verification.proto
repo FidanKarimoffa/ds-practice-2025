@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+package bookstore.transaction_verification;
+
+// -------- MESSAGES --------
+
+// Basic user data
+message TransactionUser {
+  string name = 1;
+  string contact = 2;
+}
+
+// Credit card data
+message TransactionCreditCard {
+  string number = 1;
+  string expirationDate = 2;
+  string cvv = 3;
+}
+
+// One item in the order
+message TransactionItem {
+  string name = 1;
+  int32 quantity = 2;
+}
+
+// Billing or shipping address
+message TransactionBillingAddress {
+  string street = 1;
+  string city = 2;
+  string country = 3;
+}
+
+// Holds full order data for caching
+message OrderData {
+  TransactionUser user = 1;
+  TransactionCreditCard creditCard = 2;
+  repeated TransactionItem items = 3;
+  TransactionBillingAddress billingAddress = 4;
+  TransactionBillingAddress shippingAddress = 5;
+  bool termsAccepted = 6;
+}
+
+// Used to store the order + vector clock
+message CacheOrderRequest {
+  string orderId = 1;
+  repeated int32 vectorClock = 2; // [orchestrator, transaction, fraud, suggestions]
+  OrderData orderData = 3;
+}
+
+message CacheOrderResponse {
+  repeated int32 updatedVectorClock = 1;
+}
+
+// For partial events (a), (b), (c) calls
+message EventRequest {
+  string orderId = 1;
+  repeated int32 vectorClock = 2;
+}
+
+// Response from each partial check
+message TransactionVerificationResponse {
+  bool verification = 1;      // pass/fail
+  string errors = 2;          // explanation
+  repeated int32 vectorClock = 3;  // updated clock
+}
+
+// An optional single-shot request if you want to keep old logic
+message TransactionVerificationRequest {
+  TransactionUser user = 1;
+  TransactionCreditCard creditCard = 2;
+  repeated TransactionItem items = 3;
+  TransactionBillingAddress billingAddress = 4;
+  bool termsAndConditionsAccepted = 5;
+}
+
+// -------- SERVICE --------
+
+service TransactionVerificationService {
+  // new caching call
+  rpc CacheOrder(CacheOrderRequest) returns (CacheOrderResponse);
+
+  // (a) check items
+  rpc CheckItemsNonEmpty(EventRequest) returns (TransactionVerificationResponse);
+
+  // (b) check mandatory fields
+  rpc CheckMandatoryFields(EventRequest) returns (TransactionVerificationResponse);
+
+  // (c) credit card format
+  rpc CheckCreditCardFormat(EventRequest) returns (TransactionVerificationResponse);
+
+  // optional older single-shot method
+  rpc VerifyTransaction(TransactionVerificationRequest) returns (TransactionVerificationResponse);
+}
