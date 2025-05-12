@@ -133,6 +133,7 @@ services:
       - PYTHONFILE=/app/executor/src/app.py
       - EXECUTOR_ID=1
       - PEER_IDS=1,2
+      - DB_PRIMARY_HOST=books-db-primary:6000
     volumes:
       - ./utils:/app/utils
       - ./executor/src:/app/executor/src
@@ -151,6 +152,36 @@ services:
       - PYTHONFILE=/app/executor/src/app.py
       - EXECUTOR_ID=2
       - PEER_IDS=1,2
+      - DB_PRIMARY_HOST=books-db-primary:6000
     volumes:
       - ./utils:/app/utils
       - ./executor/src:/app/executor/src
+
+  books-db-primary:
+    build: ./books_db
+    environment:
+      - ROLE=primary
+      - PORT=6000
+      - BACKUP_PEERS=books-db-b1:6000,books-db-b2:6000
+    volumes:
+      - ./utils:/app/utils  
+    container_name: books-db-primary
+    ports: ["6000:6000"]
+
+  books-db-b1:
+    build: ./books_db
+    environment:
+      - ROLE=backup
+      - PORT=6000
+    volumes:
+      - ./utils:/app/utils  
+    container_name: books-db-b1
+
+  books-db-b2:
+    build: ./books_db
+    environment:
+      - ROLE=backup
+      - PORT=6000
+    volumes:
+      - ./utils:/app/utils   
+    container_name: books-db-b2

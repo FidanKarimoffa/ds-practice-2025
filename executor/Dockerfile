@@ -1,20 +1,16 @@
-# executor/Dockerfile
+FROM python:3.11-slim
 
-FROM python:3.9
-
-# Set working directory in container
 WORKDIR /app
 
-# Copy the entire project into the container so that the directory structure is maintained
-COPY . /app/
+# copy just what the executor needs
+COPY utils    ./utils
+COPY executor ./executor
 
-# Set PYTHONPATH so Python can find the 'bookstore' package under /app/utils/pb
-ENV PYTHONPATH=/app/utils/pb
+# expose everything on the module path
+ENV PYTHONPATH=/app:/app/utils:/app/utils/pb
 
-# Install dependencies (Assuming you have executor/requirements.txt)
-RUN pip install --no-cache-dir -r executor/requirements.txt
-RUN pip install --no-cache-dir "grpcio>=1.71.0" "grpcio-tools>=1.71.0"
-RUN pip install --upgrade protobuf
+RUN pip install --no-cache-dir -r executor/requirements.txt \
+    && pip install --no-cache-dir "grpcio>=1.71.0" "grpcio-tools>=1.71.0" \
+    && pip install --no-cache-dir --upgrade protobuf
 
-# Run the executor service; if you use a hotreload script you can adjust accordingly
-CMD python utils/other/hotreload.py "executor/src/app.py"
+CMD ["python", "utils/other/hotreload.py", "executor/src/app.py"]
