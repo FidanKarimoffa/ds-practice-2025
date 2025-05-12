@@ -1,260 +1,26 @@
-# import os
-# import sys
-# import time
-# import json
-# import uuid
-# import grpc
-# from concurrent import futures
-# import threading
-
-# from utils.pb.books_db_pb2    import ReadRequest, WriteRequest
-# from utils.pb.books_db_pb2    import ReadResponse, WriteResponse
-# from utils.pb.books_db_pb2_grpc import BooksDatabaseStub
-# DB_PRIMARY = os.getenv("DB_PRIMARY_HOST", "books-db-primary:6000")
-# db_stub = BooksDatabaseStub(grpc.insecure_channel(DB_PRIMARY))
-
-
-# # Import the generated stubs from executor.proto (in the same executor package)
-# from bookstore.executor import executor_pb2, executor_pb2_grpc
-
-# # Import the Order Queue stubs (which were generated with package bookstore.order_queue)
-# from bookstore.order_queue import order_queue_pb2, order_queue_pb2_grpc
-
-# ###############################################
-# # Global Variables for Election and Heartbeat
-# ###############################################
-# # Global variable for tracking the last heartbeat timestamp.
-# last_heartbeat = None
-# heartbeat_lock = threading.Lock()
-
-# # Leader ID is a global variable updated during election.
-# leader_id = None
-# leader_lock = threading.Lock()
-
-# # Configuration for heartbeat intervals and timeouts.
-# HEARTBEAT_INTERVAL = 5  # seconds between heartbeats sent by the leader
-# HEARTBEAT_TIMEOUT = 30  # seconds to wait for heartbeat before triggering an election
-
-# ###############################################
-# # Unique Executor ID and Peer List from Environment
-# ###############################################
-# try:
-#     EXECUTOR_ID = int(os.getenv("EXECUTOR_ID"))
-# except (TypeError, ValueError):
-#     print("Error: EXECUTOR_ID environment variable is not set or invalid.")
-#     sys.exit(1)
-
-# # PEER_IDS provided as comma-separated list (including our own)
-# peer_ids_env = os.getenv("PEER_IDS", str(EXECUTOR_ID))
-# PEER_IDS = sorted([int(x.strip()) for x in peer_ids_env.split(",")])
-# print(f"[Executor {EXECUTOR_ID}] Peers in system: {PEER_IDS}")
-
-# ###############################################
-# # Heartbeat Functions
-# ###############################################
-# def send_heartbeat():
-#     """If this executor is the leader, continuously update the last heartbeat timestamp."""
-#     global last_heartbeat
-#     while True:
-#         if is_leader():
-#             with heartbeat_lock:
-#                 last_heartbeat = time.time()
-#             print(f"[Executor {EXECUTOR_ID} - LEADER] Sent heartbeat at {last_heartbeat:.2f}")
-#         time.sleep(HEARTBEAT_INTERVAL)
-
-# def monitor_heartbeat():
-#     """
-#     For follower nodes:
-#       - Check periodically if a heartbeat has been received within HEARTBEAT_TIMEOUT seconds.
-#       - If not, trigger an election.
-#     """
-#     while True:
-#         if not is_leader():
-#             with heartbeat_lock:
-#                 current_hb = last_heartbeat
-#             if current_hb is None or (time.time() - current_hb > HEARTBEAT_TIMEOUT):
-#                 print(f"[Executor {EXECUTOR_ID} - FOLLOWER] Heartbeat timeout ({time.time()-current_hb if current_hb else 'None'} sec), triggering election.")
-#                 trigger_election()
-#         time.sleep(HEARTBEAT_INTERVAL)
-
-# ###############################################
-# # Bully Election Logic (Simplified)
-# ###############################################
-# def is_leader():
-#     """Returns True if this executor is currently the leader."""
-#     with leader_lock:
-#         return leader_id == EXECUTOR_ID
-
-# def trigger_election():
-#     """
-#     Simplified Bully election:
-#       - If this executor detects a heartbeat failure, it triggers an election.
-#       - It sends messages to all peers with a higher ID.
-#       - For simulation, we assume all nodes are reachable.
-#       - The node with the highest ID becomes the leader.
-#     """
-#     global leader_id
-#     # Determine higher peers
-#     higher_peers = [pid for pid in PEER_IDS if pid > EXECUTOR_ID]
-#     if not higher_peers:
-#         # No higher peers: this node becomes leader
-#         with leader_lock:
-#             leader_id = EXECUTOR_ID
-#         print(f"[Executor {EXECUTOR_ID}] Elected as leader (no higher peers).")
-#     else:
-#         print(f"[Executor {EXECUTOR_ID}] Initiating election; sending election messages to higher peers: {higher_peers}.")
-#         # Simulate waiting for responses (here, we simply wait a fixed delay)
-#         time.sleep(3)
-#         # In a real implementation, responses would determine who is alive.
-#         # For simulation, assume the highest ID in the system becomes leader.
-#         new_leader = max(PEER_IDS)
-#         with leader_lock:
-#             leader_id = new_leader
-#         if leader_id == EXECUTOR_ID:
-#             print(f"[Executor {EXECUTOR_ID}] Elected as leader after election round.")
-#         else:
-#             print(f"[Executor {EXECUTOR_ID}] Remains a follower; new leader is Executor {leader_id}.")
-
-# ###############################################
-# # Leader-Exclusive Order Dequeue and Processing
-# ###############################################
-# def leader_order_execution_loop():
-#     """
-#     If this executor is the leader, continuously poll the Order Queue service to dequeue orders and process them.
-#     Only the leader will perform this action.
-#     """
-#     print(f"[Executor {EXECUTOR_ID} - LEADER] Starting order execution loop.")
-#     while True:
-#         try:
-#             with grpc.insecure_channel("order_queue:50054") as q_channel:
-#                 oq_stub = order_queue_pb2_grpc.OrderQueueServiceStub(q_channel)
-#                 dq_response = oq_stub.Dequeue(order_queue_pb2.DequeueRequest())
-#                 if dq_response.success:
-#                     order = dq_response.order
-#                     print(f"[Executor {EXECUTOR_ID} - LEADER] Dequeued order: {order.orderId}")
-#                     # Process the order (simulate processing)
-#                     process_order(order)
-#                 else:
-#                     print(f"[Executor {EXECUTOR_ID} - LEADER] Queue empty; waiting...")
-#                     time.sleep(5)
-#         except Exception as e:
-#             print(f"[Executor {EXECUTOR_ID} - LEADER] Error in Dequeue RPC: {e}")
-#             time.sleep(5)
-
-# def process_order(order):
-#     for item in order.items:
-#         # 1️⃣ Read
-#         read_resp = db_stub.Read(db_pb.ReadRequest(title=item.name))
-#         if read_resp.stock < item.quantity:
-#             print(f"[Executor {EXECUTOR_ID}] OUT-OF-STOCK {item.name}")
-#             return False
-
-#         # 2️⃣ Modify
-#         new_stock = read_resp.stock - item.quantity
-
-#         # 3️⃣ Write + ACK check
-#         write_resp = db_stub.Write(
-#             db_pb.WriteRequest(title=item.name, new_stock=new_stock)
-#         )
-#         if not write_resp.success:
-#             print(f"[Executor {EXECUTOR_ID}] WRITE-FAILED '{item.name}' → {new_stock}")
-#             return False
-#         else:
-#             print(f"[Executor {EXECUTOR_ID}] WRITE-ACK   '{item.name}' → {new_stock}")
-
-#     print(f"[Executor {EXECUTOR_ID}] Order {order.orderId} committed")
-#     return True
-
-
-# ###############################################
-# # gRPC Executor Service Implementation (for inter-node communication)
-# ###############################################
-# class ExecutorServicer(executor_pb2_grpc.ExecutorServiceServicer):
-#     def ExecuteOrder(self, request, context):
-#         # This is an additional RPC which could be invoked by other executors
-#         # For now, we simply process the order
-#         return executor_pb2.ExecutionResponse(success=True, message="Order executed")
-
-# ###############################################
-# # Main Function: Start gRPC Service and Election Mechanisms
-# ###############################################
-# def serve():
-#     global leader_id
-#     # Start the executor's own gRPC service
-#     server = grpc.server(futures.ThreadPoolExecutor(max_workers=5))
-#     executor_pb2_grpc.add_ExecutorServiceServicer_to_server(ExecutorServicer(), server)
-#     local_port = 50055
-#     server.add_insecure_port(f"[::]:{local_port}")
-#     server.start()
-#     print(f"[Executor {EXECUTOR_ID}] gRPC Executor Service started on port {local_port}")
-
-#     # Start heartbeat sender and monitor threads in background
-#     heartbeat_sender = threading.Thread(target=send_heartbeat, daemon=True)
-#     heartbeat_sender.start()
-#     heartbeat_monitor = threading.Thread(target=monitor_heartbeat, daemon=True)
-#     heartbeat_monitor.start()
-
-#     # Immediately trigger an election on startup
-#     trigger_election()
-
-#     # If elected leader, launch the leader order execution loop in a background thread
-#     if is_leader():
-#         leader_thread = threading.Thread(target=leader_order_execution_loop, daemon=True)
-#         leader_thread.start()
-#     else:
-#         print(f"[Executor {EXECUTOR_ID}] Running as follower; not executing orders.")
-
-#     # Wait indefinitely for the gRPC server to run
-#     server.wait_for_termination()
-
-# if __name__ == "__main__":
-#     serve()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import os
 import sys
 import time
 import grpc
 from concurrent import futures
 import threading
-
+import logging
 from utils.pb import books_db_pb2 as db_pb
+from utils.pb import books_db_pb2_grpc as db_grpc
 from utils.pb.books_db_pb2_grpc import BooksDatabaseStub
+sys.path.insert(0, "/app/payment_service")  # ✅ Add this near the top
+
+import payment_pb2
+import payment_pb2_grpc
+
+
 
 from bookstore.executor import executor_pb2, executor_pb2_grpc
 from bookstore.order_queue import order_queue_pb2, order_queue_pb2_grpc
+
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s - %(message)s')
 
 last_heartbeat = None
 heartbeat_lock = threading.Lock()
@@ -337,38 +103,133 @@ def leader_order_execution_loop():
             time.sleep(5)
 
 import json  
-
 def process_order(order):
+    order_data = json.loads(order.jsonData)
+    items = order_data.get("items", [])
+    order_id = order.orderId
+
+    db_stub = db_grpc.BooksDatabaseStub(grpc.insecure_channel(DB_PRIMARY))
+    pay_stub = payment_pb2_grpc.PaymentServiceStub(grpc.insecure_channel("payment-service:50056"))
+
+    logging.info(f"[Executor {EXECUTOR_ID}] Starting 2PC for order: {order_id}")
+
+    # Phase 1: Check stock
+    for item in items:
+        read_resp = db_stub.Read(db_pb.ReadRequest(title=item["name"]))
+        if read_resp.stock < item["quantity"]:
+            logging.warning(f"[Executor {EXECUTOR_ID}] OUT-OF-STOCK {item['name']}")
+            return False
+
+    ready_votes = []
+    for item in items:
+        try:
+            prepare_req = db_pb.PrepareRequest(order_id=order_id, title=item["name"], new_stock=read_resp.stock - item["quantity"])
+            db_ready = db_stub.Prepare(prepare_req)
+            ready_votes.append(db_ready.ready)
+            logging.info(f"[Executor {EXECUTOR_ID}] DB ready vote for {item['name']}: {db_ready.ready}")
+        except Exception as e:
+            logging.error(f"[Executor {EXECUTOR_ID}] DB prepare failed for {item['name']}: {e}")
+            ready_votes.append(False)
+
     try:
-        data = json.loads(order.jsonData)
-        items = data["items"]
-    except (json.JSONDecodeError, KeyError) as e:
-        print(f"[Executor {EXECUTOR_ID}] JSON parsing error: {e}")
+        pay_ready = pay_stub.Prepare(payment_pb2.PrepareRequest(order_id=order_id))
+        ready_votes.append(pay_ready.ready)
+        logging.info(f"[Executor {EXECUTOR_ID}] Payment ready vote: {pay_ready.ready}")
+    except Exception as e:
+        logging.error(f"[Executor {EXECUTOR_ID}] Payment prepare failed: {e}")
+        ready_votes.append(False)
+
+    # Phase 2: Commit or Abort
+    if all(ready_votes):
+        for item in items:
+            try:
+                db_stub.Commit(db_pb.CommitRequest(order_id=order_id))
+                logging.info(f"[Executor {EXECUTOR_ID}] DB commit successful for {item['name']}")
+            except Exception as e:
+                logging.error(f"[Executor {EXECUTOR_ID}] DB commit failed for {item['name']}: {e}")
+        try:
+            pay_stub.Commit(payment_pb2.CommitRequest(order_id=order_id))
+            logging.info(f"[Executor {EXECUTOR_ID}] Payment commit successful")
+        except Exception as e:
+            logging.error(f"[Executor {EXECUTOR_ID}] Payment commit failed: {e}")
+
+        logging.info(f"[Executor {EXECUTOR_ID}] Order {order_id} committed successfully")
+        return True
+    else:
+        for item in items:
+            try:
+                db_stub.Abort(db_pb.AbortRequest(order_id=order_id))
+                logging.info(f"[Executor {EXECUTOR_ID}] DB abort completed for {item['name']}")
+            except Exception as e:
+                logging.warning(f"[Executor {EXECUTOR_ID}] DB abort failed for {item['name']}: {e}")
+        try:
+            pay_stub.Abort(payment_pb2.AbortRequest(order_id=order_id))
+            logging.info(f"[Executor {EXECUTOR_ID}] Payment abort completed")
+        except Exception as e:
+            logging.warning(f"[Executor {EXECUTOR_ID}] Payment abort failed: {e}")
+
+        logging.info(f"[Executor {EXECUTOR_ID}] Order {order_id} aborted")
         return False
 
-    for item in items:
-        title = item["name"]
-        qty = item["quantity"]
 
-        # 1️⃣ Read
-        read_resp = db_stub.Read(db_pb.ReadRequest(title=title))
-        if read_resp.stock < qty:
-            print(f"[Executor {EXECUTOR_ID}] OUT-OF-STOCK {title}")
-            return False
+# def process_order(order):
+#     order_data = json.loads(order.jsonData)
+#     items = order_data.get("items", [])
+#     order_id = order.orderId
 
-        # 2️⃣ Modify
-        new_stock = read_resp.stock - qty
+#     # gRPC stubs
+#     db_stub = db_grpc.BooksDatabaseStub(grpc.insecure_channel(DB_PRIMARY))
+#     pay_stub = payment_pb2_grpc.PaymentServiceStub(grpc.insecure_channel("payment-service:50056"))
 
-        # 3️⃣ Write
-        write_resp = db_stub.Write(db_pb.WriteRequest(title=title, new_stock=new_stock))
-        if not write_resp.success:
-            print(f"[Executor {EXECUTOR_ID}] WRITE-FAILED '{title}' → {new_stock}")
-            return False
-        else:
-            print(f"[Executor {EXECUTOR_ID}] WRITE-ACK   '{title}' → {new_stock}")
+#     ready_votes = []
+#     updated_stocks = {}
 
-    print(f"[Executor {EXECUTOR_ID}] Order {order.orderId} committed")
-    return True
+#     # 🟡 Phase 1: Check stock & send Prepare to DB
+#     for item in items:
+#         try:
+#             read_resp = db_stub.Read(db_pb.ReadRequest(title=item["name"]))
+#             if read_resp.stock < item["quantity"]:
+#                 print(f"[Executor {EXECUTOR_ID}] OUT-OF-STOCK {item['name']}")
+#                 return False
+
+#             new_stock = read_resp.stock - item["quantity"]
+#             updated_stocks[item["name"]] = new_stock
+
+#             prep_resp = db_stub.Prepare(db_pb.PrepareRequest(
+#                 order_id=order_id,
+#                 title=item["name"],
+#                 new_stock=new_stock
+#             ))
+#             ready_votes.append(prep_resp.ready)
+
+#         except Exception as e:
+#             print(f"[Executor {EXECUTOR_ID}] DB Prepare failed for {item['name']}: {e}")
+#             ready_votes.append(False)
+
+#     # 🔵 Phase 1: Send Prepare to Payment
+#     try:
+#         pay_ready = pay_stub.Prepare(payment_pb2.PrepareRequest(order_id=order_id))
+#         ready_votes.append(pay_ready.ready)
+#     except Exception as e:
+#         print(f"[Executor {EXECUTOR_ID}] Payment Prepare failed: {e}")
+#         ready_votes.append(False)
+
+#     # 🟢 Phase 2: Commit or Abort
+#     if all(ready_votes):
+#         # COMMIT
+#         for item in items:
+#             db_stub.Commit(db_pb.CommitRequest(order_id=order_id))
+#         pay_stub.Commit(payment_pb2.CommitRequest(order_id=order_id))
+#         print(f"[Executor {EXECUTOR_ID}] Order {order_id} committed")
+#         return True
+#     else:
+#         # ABORT
+#         for item in items:
+#             db_stub.Abort(db_pb.AbortRequest(order_id=order_id))
+#         pay_stub.Abort(payment_pb2.AbortRequest(order_id=order_id))
+#         print(f"[Executor {EXECUTOR_ID}] Order {order_id} aborted")
+#         return False
+
 
 class ExecutorServicer(executor_pb2_grpc.ExecutorServiceServicer):
     def ExecuteOrder(self, request, context):

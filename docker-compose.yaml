@@ -13,6 +13,9 @@ services:
     volumes:
       # Mount the frontend directory
       - ./frontend/src:/usr/share/nginx/html
+    networks:
+      - bookstore-net
+
   orchestrator:
     build:
       # Use the current directory as the build context
@@ -36,6 +39,9 @@ services:
       - ./utils:/app/utils
       # Mount the orchestrator/src directory in the current directory to the /app/orchestrator/src directory in the container
       - ./orchestrator/src:/app/orchestrator/src
+    networks:
+      - bookstore-net
+
   fraud_detection:
     build:
       # Use the current directory as the build context
@@ -58,6 +64,8 @@ services:
       - ./utils:/app/utils
       # Mount the fraud_detection/src directory in the current directory to the /app/fraud_detection/src directory in the container
       - ./fraud_detection/src:/app/fraud_detection/src
+    networks:
+      - bookstore-net
 
   transaction_verification:
     build:
@@ -81,6 +89,8 @@ services:
       - ./utils:/app/utils
       # Mount the fraud_detection/src directory in the current directory to the /app/fraud_detection/src directory in the container
       - ./transaction_verification/src:/app/transaction_verification/src
+    networks:
+      - bookstore-net
 
   suggestions:
     build:
@@ -104,7 +114,8 @@ services:
       - ./utils:/app/utils
       # Mount the fraud_detection/src directory in the current directory to the /app/fraud_detection/src directory in the container
       - ./suggestions/src:/app/suggestions/src
-
+    networks:
+      - bookstore-net
 
   order_queue:  
     build:
@@ -119,7 +130,8 @@ services:
     volumes:
       - ./utils:/app/utils
       - ./order_queue/src:/app/order_queue/src
-
+    networks:
+      - bookstore-net
 
   executor_1:
     build:
@@ -137,7 +149,9 @@ services:
     volumes:
       - ./utils:/app/utils
       - ./executor/src:/app/executor/src
-
+      - ./payment_service:/app/payment_service
+    networks:
+      - bookstore-net
 
 
   executor_2:
@@ -146,7 +160,7 @@ services:
       dockerfile: ./executor/Dockerfile
     container_name: executor_2
     ports:
-      - "50056:50055"
+      - "50057:50055"
     environment:
       - PYTHONUNBUFFERED=TRUE
       - PYTHONFILE=/app/executor/src/app.py
@@ -156,6 +170,9 @@ services:
     volumes:
       - ./utils:/app/utils
       - ./executor/src:/app/executor/src
+      - ./payment_service:/app/payment_service
+    networks:
+      - bookstore-net
 
   books-db-primary:
     build: ./books_db
@@ -167,6 +184,8 @@ services:
       - ./utils:/app/utils  
     container_name: books-db-primary
     ports: ["6000:6000"]
+    networks:
+      - bookstore-net
 
   books-db-b1:
     build: ./books_db
@@ -176,6 +195,8 @@ services:
     volumes:
       - ./utils:/app/utils  
     container_name: books-db-b1
+    networks:
+      - bookstore-net
 
   books-db-b2:
     build: ./books_db
@@ -185,3 +206,17 @@ services:
     volumes:
       - ./utils:/app/utils   
     container_name: books-db-b2
+    networks:
+      - bookstore-net
+
+
+  payment-service:
+    build:
+      context: ./payment_service
+    ports:
+      - "50056:50056"
+    networks:
+      - bookstore-net
+    
+networks: 
+  bookstore-net: {}

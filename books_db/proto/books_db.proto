@@ -4,6 +4,11 @@ package bookstore.books_db;
 service BooksDatabase {
   rpc Read  (ReadRequest)  returns (ReadResponse);
   rpc Write (WriteRequest) returns (WriteResponse);
+
+  // 2PC Commitment RPCs
+  rpc Prepare(PrepareRequest) returns (PrepareResponse);
+  rpc Commit(CommitRequest) returns (CommitResponse);
+  rpc Abort(AbortRequest) returns (AbortResponse);
 }
 
 message ReadRequest  { string title = 1; }
@@ -14,3 +19,29 @@ message WriteRequest {
   int32  new_stock = 2;
 }
 message WriteResponse { bool success = 1; }
+
+message PrepareRequest {
+  string order_id = 1;
+  string title = 2;
+  int32 new_stock = 3;
+}
+
+message PrepareResponse {
+  bool ready = 1;
+}
+
+message CommitRequest {
+  string order_id = 1;
+}
+
+message CommitResponse {
+  bool success = 1;
+}
+
+message AbortRequest {
+  string order_id = 1;
+}
+
+message AbortResponse {
+  bool aborted = 1;
+}
